@@ -1,0 +1,111 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  AACP — docker-compose.dev.yml  (DEVELOPMENT)
+#
+#  Hot-reload for both frontend and backend.
+#  Usage:
+#    docker compose -f docker-compose.dev.yml up --build
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─────────────────────────────────────────────────────────────
+  # MongoDB  (same as production, but port exposed for Compass)
+  # ─────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: aacp-mongo-dev
+    restart: unless-stopped
+    ports:
+      - "27017:27017"             # expose to host so you can use MongoDB Compass
+    volumes:
+      - mongo_dev_data:/data/db
+    networks:
+      - aacp-dev-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ─────────────────────────────────────────────────────────────
+  # Backend  —  nodemon watches for changes, ts-node compiles on-the-fly
+  # ─────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev       # lighter dev image (no multi-stage)
+    container_name: aacp-backend-dev
+    restart: unless-stopped
+    ports:
+      - "5000:5000"                   # API
+      - "9229:9229"                   # Node.js inspector (VS Code attach)
+
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      MONGO_URI: mongodb://mongo:27017/aacp
+      JWT_SECRET: dev_secret_change_in_prod
+      JWT_EXPIRE: 7d
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CHAPA_SECRET_KEY: ${CHAPA_SECRET_KEY:-}
+      CHAPA_BASE_URL: https://api.chapa.co/v1
+      CLIENT_URL: http://localhost:3000
+      COINS_TO_POST_CAMPAIGN: 10
+      COINS_TO_APPLY: 5
+
+    volumes:
+      # Mount source code so nodemon can detect changes
+      - ./backend/src:/app/src:cached
+      - ./backend/tsconfig.json:/app/tsconfig.json:cached
+      # Prevent host node_modules from overwriting container's
+      - /app/node_modules
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+    networks:
+      - aacp-dev-network
+
+  # ─────────────────────────────────────────────────────────────
+  # Frontend  —  CRA dev server with hot module replacement
+  # ─────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: aacp-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+    environment:
+      # These are read at runtime by the CRA dev server
+      REACT_APP_API_URL: http://localhost:5000/api
+      CHOKIDAR_USEPOLLING: "true"     # needed inside Docker on Windows/macOS
+      WATCHPACK_POLLING: "true"
+      WDS_SOCKET_PORT: 3000
+
+    volumes:
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js:cached
+      - /app/node_modules                # isolated container node_modules
+
+    depends_on:
+      - backend
+
+    networks:
+      - aacp-dev-network
+
+    stdin_open: true                   # keep stdin open (required by CRA)
+    tty: true
+
+volumes:
+  mongo_dev_data:
+    driver: local
+
+networks:
+  aacp-dev-network:
+    driver: bridge
