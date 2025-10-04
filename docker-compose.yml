@@ -1,0 +1,191 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  AACP — docker-compose.yml  (PRODUCTION)
+#
+#  Services
+#  ├── mongo      MongoDB 7 with persistent volume
+#  ├── backend    Node.js / Express API  (port 5000)
+#  ├── frontend   React + Nginx          (port 3000)
+#  └── nginx      Reverse proxy          (port 80 / 443)
+#
+#  Usage:
+#    docker compose --env-file .env.production up -d --build
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─────────────────────────────────────────────────────────────
+  # MongoDB  —  persistent NoSQL database
+  # ─────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: aacp-mongo
+    restart: unless-stopped
+
+    # Never expose 27017 to the host in production.
+    # Backend reaches it over the internal Docker network.
+    # Uncomment the line below ONLY for local debugging:
+    # ports:
+    #   - "27017:27017"
+
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: aacp
+
+    volumes:
+      # Named volume — survives container restarts / rebuilds
+      - mongo_data:/data/db
+      # Optional: seed / init scripts
+      # - ./mongo-init:/docker-entrypoint-initdb.d:ro
+
+    networks:
+      - aacp-network
+
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────
+  # Backend  —  Express + Socket.IO API
+  # ─────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      # Pass the build target so we always get the production stage
+      target: runner
+    container_name: aacp-backend
+    restart: unless-stopped
+
+    # Expose to the reverse-proxy only, not to the host
+    expose:
+      - "5000"
+
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+
+      # MongoDB — uses Docker service name as hostname
+      MONGO_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongo:27017/aacp?authSource=admin
+
+      # Secrets — supply via .env.production or CI secrets manager
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE: ${JWT_EXPIRE:-7d}
+
+      # External APIs
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      CHAPA_SECRET_KEY: ${CHAPA_SECRET_KEY}
+      CHAPA_BASE_URL: ${CHAPA_BASE_URL:-https://api.chapa.co/v1}
+
+      # CORS — the Nginx reverse proxy is the public-facing origin
+      CLIENT_URL: ${CLIENT_URL:-http://localhost}
+
+      # Business logic
+      COINS_TO_POST_CAMPAIGN: ${COINS_TO_POST_CAMPAIGN:-10}
+      COINS_TO_APPLY: ${COINS_TO_APPLY:-5}
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+    networks:
+      - aacp-network
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # Persist uploaded files across restarts
+    volumes:
+      - backend_uploads:/app/uploads
+
+  # ─────────────────────────────────────────────────────────────
+  # Frontend  —  React (CRA) served by Nginx
+  # ─────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        # Baked into the JS bundle at build time
+        # Points to the public-facing Nginx proxy path
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost/api}
+    container_name: aacp-frontend
+    restart: unless-stopped
+
+    expose:
+      - "80"
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    networks:
+      - aacp-network
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ─────────────────────────────────────────────────────────────
+  # Nginx  —  Reverse proxy (HTTP on port 80)
+  #   Routes:
+  #     /api/*        → backend:5000
+  #     /socket.io/*  → backend:5000  (WebSocket upgrade)
+  #     /*            → frontend:80
+  # ─────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: aacp-nginx
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      # Uncomment for HTTPS (add SSL cert volume below):
+      # - "443:443"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # Uncomment for SSL certificates:
+      # - ./nginx/ssl:/etc/nginx/ssl:ro
+      # - certbot_data:/var/www/certbot:ro
+
+    depends_on:
+      - frontend
+      - backend
+
+    networks:
+      - aacp-network
+
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# ─────────────────────────────────────────────────────────────
+# Named volumes — data survives container recreation
+# ─────────────────────────────────────────────────────────────
+volumes:
+  mongo_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+# ─────────────────────────────────────────────────────────────
+# Internal Docker network — services talk by container name
+# ─────────────────────────────────────────────────────────────
+networks:
+  aacp-network:
+    driver: bridge
