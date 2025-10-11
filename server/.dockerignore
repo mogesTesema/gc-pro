@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────
+#  .dockerignore for the BACKEND
+#  Place at: Senior-Project/backend/.dockerignore
+#  Keeps the build context small and avoids leaking secrets
+# ─────────────────────────────────────────────────────────────
+
+# Dependencies (re-installed inside the image)
+node_modules/
+
+# TypeScript compilation output (rebuilt inside the image)
+dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment / secrets — NEVER copy into an image
+.env
+.env.*
+!.env.example
+
+# Version control
+.git/
+.gitignore
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor config
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test files (not needed in production image)
+**/*.test.ts
+**/*.spec.ts
+coverage/
+
+# Docker files themselves (not needed inside image)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Utility scripts at the repo root
+*.ps1
