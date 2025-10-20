@@ -1,0 +1,24 @@
+# ═══════════════════════════════════════════════════════════════
+#  Backend  —  Dockerfile.dev
+#  Lightweight single-stage image for hot-reload development.
+#  Uses nodemon + ts-node (no compilation step needed).
+# ═══════════════════════════════════════════════════════════════
+FROM node:20-alpine
+
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy manifests and install all deps (including devDependencies)
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy source (will be overridden by the bind-mount in compose)
+COPY . .
+
+# Port 5000 for API, 9229 for Node inspector
+EXPOSE 5000 9229
+
+# nodemon watches .ts files and restarts on change
+# --inspect allows VS Code debugger to attach
+CMD ["npx", "nodemon", "--exec", "node --inspect=0.0.0.0:9229 -r ts-node/register src/server.ts", "--watch", "src", "--ext", "ts,json"]
