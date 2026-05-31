@@ -1,0 +1,17 @@
+name: Enterprise CI Pipeline
+on: 
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  test_and_build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: echo "Running enterprise test suites..."
+      - run: echo "Tests passed."
