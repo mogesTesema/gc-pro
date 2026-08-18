@@ -1,8 +1,5 @@
-# Security Policy
+# Security
 
-## Supported Versions
-Only the latest major version receives security updates.
+Do not commit API keys, JWTs, or `.env` files.
 
-## Reporting a Vulnerability
-If you discover a security vulnerability, please email `security-team@internal-domain.com`. 
-Do NOT open a GitHub issue. All reports are handled strictly confidentially.
+Report vulnerabilities privately to the repository owner. Do not file public issues for security flaws.

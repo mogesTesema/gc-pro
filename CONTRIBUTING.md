@@ -1,15 +1,15 @@
-# Enterprise Contribution Guidelines
+# Contributing
 
-## Branch Naming Convention
-Branches must follow the format: `<type>/<ticket-id>-<short-description>`
-Types: `feat`, `fix`, `hotfix`, `chore`, `docs`.
-Example: `feat/JIRA-123-add-auth-module`
+This is a private AACP frontend. Keep changes focused.
 
-## Commit Messages
-We enforce [Conventional Commits](https://www.conventionalcommits.org/).
-Format: `<type>(<scope>): <description>`
+## Setup
 
-## Pull Requests
-1. Ensure all CI tests pass.
-2. Code coverage must not drop below 95%.
-3. Requires at least 2 approvals from senior engineers.
+- Node.js 20
+- `npm ci`
+- `npm start` / `npm test` / `npm run typecheck`
+
+## Pull requests
+
+- Describe the user-visible behavior.
+- Do not commit `.env`, secrets, or generated `build/` / `coverage/` output.
+- Existing tests should stay green.
