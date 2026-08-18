@@ -31,6 +31,7 @@ const ChatPage: React.FC = () => {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
+  const [listFilter, setListFilter] = useState<'all' | 'unread'>('all');
 
   const endRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,11 +41,15 @@ const ChatPage: React.FC = () => {
     (async () => {
       try {
         const res = await chatAPI.getMy();
-        setChats(res.data.chats || []);
+        let list = res.data.chats || [];
+        if (listFilter === 'unread') {
+          list = list.filter((c: IChat) => (c.unreadCount?.[user?._id || ''] || 0) > 0);
+        }
+        setChats(list);
       } catch { toast.error('Failed to load chats'); }
       finally { setChatsLoading(false); }
     })();
-  }, []);
+  }, [listFilter]);
 
   // Load messages when chat changes
   useEffect(() => {
@@ -59,7 +64,10 @@ const ChatPage: React.FC = () => {
           chatAPI.getMessages(activeChatId),
         ]);
         setActiveChat(chatRes.data.chat);
-        setMessages(msgsRes.data.messages || []);
+        setMessages((prev) => {
+          const incoming: IMessage[] = msgsRes.data.messages || [];
+          return [...prev, ...incoming];
+        });
         socket?.emit('chat:join', activeChatId);
         socket?.emit('messages:read', activeChatId);
         setChats((prev) => prev.map((c) => c._id === activeChatId
@@ -76,17 +84,22 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     if (!socket) return;
     const onMsg = (msg: IMessage) => {
+      setMessages((prev) => {
+        const filtered = prev.filter((m) => !m._id.startsWith('temp-'));
+        return [...filtered, msg];
+      });
+      setChats((prev) => prev.map((c) => c._id === msg.chatId
+        ? {
+            ...c,
+            lastMessage: msg.content,
+            lastMessageAt: msg.createdAt,
+            unreadCount: msg.chatId === activeChatId
+              ? { ...c.unreadCount, [user!._id]: 0 }
+              : { ...c.unreadCount, [user!._id]: (c.unreadCount?.[user!._id] || 0) + 1 },
+          }
+        : c));
       if (msg.chatId === activeChatId) {
-        setMessages((prev) => {
-          // Replace optimistic message if from self, or append
-          const filtered = prev.filter((m) => !m._id.startsWith('temp-'));
-          return [...filtered, msg];
-        });
-        setChats((prev) => prev.map((c) => c._id === activeChatId ? { ...c, lastMessage: msg.content, lastMessageAt: msg.createdAt } : c));
         socket.emit('messages:read', activeChatId);
-      } else {
-        setChats((prev) => prev.map((c) => c._id === msg.chatId
-          ? { ...c, lastMessage: msg.content, lastMessageAt: msg.createdAt, unreadCount: { ...c.unreadCount, [user!._id]: (c.unreadCount?.[user!._id] || 0) + 1 } } : c));
       }
     };
     const onTyping   = (d: any) => { if (d.userId !== user?._id) setOtherTyping(true); };
@@ -134,7 +147,21 @@ const ChatPage: React.FC = () => {
       {/* ── Chat list ── */}
       <div className={`w-72 border-r flex flex-col shrink-0 ${activeChatId ? 'hidden md:flex' : 'flex'}`}>
         <div className="px-4 py-4 border-b">
-          <h2 className="font-bold text-gray-900">Messages</h2>
+          <h2 className="font-bold text-gray-900 mb-3">Messages</h2>
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            {(['all', 'unread'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => { setListFilter(f); setChatsLoading(true); }}
+                className={`flex-1 px-2 py-1 rounded-md text-xs font-medium capitalize ${
+                  listFilter === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {chatsLoading ? <div className="flex justify-center py-8"><Spinner size={22} /></div>

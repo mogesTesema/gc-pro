@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AxiosError } from 'axios';
 import toast from 'react-hot-toast';
+import { campaignAPI } from '../api/client';
 
 // ─── Generic API call hook ────────────────────────────────
 export const useApiCall = <T = any, E = any>(
@@ -120,4 +121,56 @@ export const useDebounce = <T>(value: T, delay: number): T => {
   return debouncedValue;
 };
 
-import { useEffect } from 'react';
+// ─── Campaign shortlist rank ──────────────────────────────
+export const useCampaignShortlist = () => {
+  const [ranks, setRanks] = useState<string[]>([]);
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const isShortlisted = (id: string) => ranks.includes(id);
+
+  const applyRank = async (id: string, title: string) => {
+    const snapshot = ranks;
+    const already = snapshot.includes(id);
+    let next: string[];
+    if (!already) {
+      next = [...snapshot, id];
+    } else if (snapshot[0] === id) {
+      next = snapshot.filter((r) => r !== id);
+    } else {
+      next = [id, ...snapshot.filter((r) => r !== id)];
+    }
+
+    setRanks(next);
+    setLabels((prev) => ({ ...prev, [id]: title }));
+    setPendingId(id);
+
+    try {
+      const res = await campaignAPI.toggleBookmark(id);
+      const confirmed = res.data.bookmarked
+        ? already && snapshot[0] !== id
+          ? [id, ...snapshot.filter((r) => r !== id)]
+          : snapshot.includes(id)
+            ? snapshot
+            : [...snapshot, id]
+        : snapshot.filter((r) => r !== id);
+      setRanks(confirmed);
+      toast.success(res.data.message || (res.data.bookmarked ? 'Saved to shortlist' : 'Removed from shortlist'));
+    } catch {
+      setRanks(snapshot);
+      toast.error('Login required to bookmark');
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  const promote = async (id: string, title: string) => {
+    if (!ranks.includes(id)) {
+      await applyRank(id, title);
+      return;
+    }
+    await applyRank(id, title);
+  };
+
+  return { ranks, labels, pendingId, isShortlisted, applyRank, promote };
+};

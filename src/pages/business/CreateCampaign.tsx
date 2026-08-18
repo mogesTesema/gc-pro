@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { campaignAPI } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
@@ -8,11 +8,16 @@ import toast from 'react-hot-toast';
 
 const NICHES = ['Tech', 'Lifestyle', 'Fashion', 'Food', 'Travel', 'Fitness', 'Gaming', 'Music', 'Beauty', 'Education', 'Finance', 'Sports'];
 const PLATFORMS = ['youtube', 'tiktok', 'instagram', 'twitter', 'facebook', 'other'];
+const STEPS = ['Basics', 'Targeting', 'Requirements'] as const;
 
 const CreateCampaign: React.FC = () => {
   const navigate = useNavigate();
   const { user, setUser } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(1);
+  const [stepError, setStepError] = useState('');
+  const titleRef = useRef<HTMLInputElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -30,6 +35,10 @@ const CreateCampaign: React.FC = () => {
   });
   const [skillInput, setSkillInput] = useState('');
   const [tagInput, setTagInput] = useState('');
+
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [step]);
 
   const set = (field: string, value: any) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -51,14 +60,41 @@ const CreateCampaign: React.FC = () => {
   const removeFromArr = (field: 'requiredSkills' | 'tags', val: string) =>
     setForm((prev) => ({ ...prev, [field]: prev[field].filter((v) => v !== val) }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.title || !form.description || !form.budget || !form.duration) {
-      toast.error('Please fill all required fields');
+  const missingBasics = !form.title || !form.description || !form.budget || !form.duration;
+  const missingNiche = form.niche.length === 0;
+
+  const goNext = () => {
+    if (step === 1 && missingBasics) {
+      setStepError('Complete the required basics before continuing.');
       return;
     }
-    if (form.niche.length === 0) {
-      toast.error('Select at least one niche');
+    if (step === 2 && missingNiche) {
+      setStepError('Pick at least one niche.');
+      return;
+    }
+    setStepError('');
+    setStep((s) => Math.min(3, s + 1));
+  };
+
+  const goBack = () => {
+    setStepError('');
+    setStep((s) => Math.max(1, s - 1));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (step < 3) {
+      goNext();
+      return;
+    }
+    if (missingBasics) {
+      setStepError('Complete the required basics before posting.');
+      setStep(1);
+      return;
+    }
+    if (missingNiche) {
+      setStepError('Pick at least one niche.');
+      setStep(2);
       return;
     }
     setLoading(true);
@@ -69,7 +105,6 @@ const CreateCampaign: React.FC = () => {
         duration: parseInt(form.duration),
         minFollowers: form.minFollowers ? parseInt(form.minFollowers) : 0,
       });
-      // Update coin balance locally
       if (user) setUser({ ...user, coinBalance: user.coinBalance - 10 });
       toast.success('Campaign posted! 🎉');
       navigate('/dashboard');
@@ -80,9 +115,16 @@ const CreateCampaign: React.FC = () => {
     }
   };
 
+  const pane = (n: number) =>
+    n === step
+      ? 'space-y-5'
+      : 'h-0 overflow-hidden opacity-0';
+
+  const errorBorder = (empty: boolean) =>
+    stepError && empty ? 'border-red-500' : 'border-gray-300';
+
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
           <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -95,24 +137,37 @@ const CreateCampaign: React.FC = () => {
         </p>
       </div>
 
+      <div className="flex gap-2 mb-6">
+        {STEPS.map((label, i) => (
+          <div key={label} className={`flex-1 rounded-xl px-3 py-2 text-center text-sm font-medium border ${
+            step === i + 1 ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200'
+          }`}>
+            {i + 1}. {label}
+          </div>
+        ))}
+      </div>
+
+      {stepError && (
+        <p className="text-sm text-red-600 mb-4 font-medium">{stepError}</p>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+        <div className={`bg-white rounded-xl border border-gray-200 p-6 ${pane(1)}`} aria-hidden={step !== 1}>
           <h2 className="font-semibold text-gray-800 border-b pb-2">Basic Info</h2>
 
-          {/* Title */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Campaign Title <span className="text-red-500">*</span>
             </label>
             <input
+              ref={titleRef}
               value={form.title}
               onChange={(e) => set('title', e.target.value)}
               placeholder="e.g. TikTok Product Review Campaign"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${errorBorder(!form.title)}`}
             />
           </div>
 
-          {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Description <span className="text-red-500">*</span>
@@ -122,11 +177,10 @@ const CreateCampaign: React.FC = () => {
               onChange={(e) => set('description', e.target.value)}
               rows={4}
               placeholder="Describe your campaign, what you need, expected deliverables…"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+              className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none ${errorBorder(!form.description)}`}
             />
           </div>
 
-          {/* Budget & Duration */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -138,7 +192,7 @@ const CreateCampaign: React.FC = () => {
                 onChange={(e) => set('budget', e.target.value)}
                 placeholder="e.g. 5000"
                 min={0}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${errorBorder(!form.budget)}`}
               />
             </div>
             <div>
@@ -151,16 +205,15 @@ const CreateCampaign: React.FC = () => {
                 onChange={(e) => set('duration', e.target.value)}
                 placeholder="e.g. 14"
                 min={1}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${errorBorder(!form.duration)}`}
               />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+        <div className={`bg-white rounded-xl border border-gray-200 p-6 ${pane(2)}`} aria-hidden={step !== 2}>
           <h2 className="font-semibold text-gray-800 border-b pb-2">Creator Requirements</h2>
 
-          {/* Niche */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Niche <span className="text-red-500">*</span>
@@ -174,7 +227,9 @@ const CreateCampaign: React.FC = () => {
                   className={`px-3 py-1.5 rounded-full text-sm border transition ${
                     form.niche.includes(n.toLowerCase())
                       ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'border-gray-300 text-gray-600 hover:border-blue-400'
+                      : missingNiche && stepError
+                        ? 'border-red-400 text-gray-600'
+                        : 'border-gray-300 text-gray-600 hover:border-blue-400'
                   }`}
                 >
                   {n}
@@ -183,7 +238,6 @@ const CreateCampaign: React.FC = () => {
             </div>
           </div>
 
-          {/* Platform */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Platform</label>
             <div className="flex flex-wrap gap-2">
@@ -204,7 +258,6 @@ const CreateCampaign: React.FC = () => {
             </div>
           </div>
 
-          {/* Min followers */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Min Followers</label>
@@ -227,8 +280,11 @@ const CreateCampaign: React.FC = () => {
               />
             </div>
           </div>
+        </div>
 
-          {/* Skills */}
+        <div className={`bg-white rounded-xl border border-gray-200 p-6 ${pane(3)}`} aria-hidden={step !== 3}>
+          <h2 className="font-semibold text-gray-800 border-b pb-2">Deliverables</h2>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Required Skills</label>
             <div className="flex gap-2 mb-2">
@@ -256,18 +312,43 @@ const CreateCampaign: React.FC = () => {
             </div>
           </div>
 
-          {/* Target audience */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Tags</label>
+            <div className="flex gap-2 mb-2">
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToArr('tags', tagInput, () => setTagInput('')); }}}
+                placeholder="Type a tag and press Enter"
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+              <button type="button" onClick={() => addToArr('tags', tagInput, () => setTagInput(''))}
+                className="px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <Plus size={16} />
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {form.tags.map((s) => (
+                <span key={s} className="flex items-center gap-1 bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">
+                  {s}
+                  <button type="button" onClick={() => removeFromArr('tags', s)}>
+                    <X size={12} className="hover:text-red-500" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Target Audience</label>
             <input
               value={form.targetAudience}
               onChange={(e) => set('targetAudience', e.target.value)}
               placeholder="e.g. Young adults 18-25 interested in tech"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-4 py-2.5 border rounded-lg border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
           </div>
 
-          {/* Requirements */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Detailed Requirements</label>
             <textarea
@@ -280,14 +361,35 @@ const CreateCampaign: React.FC = () => {
           </div>
         </div>
 
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
-        >
-          {loading ? <><Spinner size={18} /> Posting…</> : '🚀 Post Campaign (–10 coins)'}
-        </button>
+        <div className="flex gap-3">
+          {step > 1 && (
+            <button
+              type="button"
+              onClick={goBack}
+              className="flex-1 py-3 border border-gray-300 rounded-xl font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Back
+            </button>
+          )}
+          {step < 3 ? (
+            <button
+              ref={nextRef}
+              type="button"
+              onClick={goNext}
+              className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+            >
+              {loading ? <><Spinner size={18} /> Posting…</> : 'Post Campaign (–10 coins)'}
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );

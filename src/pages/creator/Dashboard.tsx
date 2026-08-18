@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { campaignAPI, applicationAPI } from '../../api/client';
 import { ICampaign, IApplication } from '../../types';
 import { StatCard, Badge, PageLoading, EmptyState } from '../../components/common/index';
-import { Briefcase, FileText, CheckCircle, Star, ArrowRight, Clock, TrendingUp, Coins } from 'lucide-react';
+import { FileText, CheckCircle, Star, ArrowRight, Clock, TrendingUp, Coins } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const NICHES = ['Tech', 'Lifestyle', 'Fashion', 'Food', 'Travel', 'Fitness', 'Gaming', 'Music', 'Beauty', 'Education'];
 
 const getGreeting = () => {
   const h = new Date().getHours();
@@ -16,15 +19,17 @@ const getGreeting = () => {
 
 const CreatorDashboard: React.FC = () => {
   const { user, profile } = useAuth();
+  const { onlineUsers, isConnected } = useSocket();
   const [campaigns, setCampaigns] = useState<ICampaign[]>([]);
   const [applications, setApplications] = useState<IApplication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState(Date.now());
 
   useEffect(() => {
     (async () => {
       try {
         const [cRes, aRes] = await Promise.all([
-          campaignAPI.getAll({ limit: 5 }),
+          campaignAPI.getAll({ limit: 12 }),
           applicationAPI.getMy(),
         ]);
         setCampaigns(cRes.data.campaigns || []);
@@ -36,6 +41,83 @@ const CreatorDashboard: React.FC = () => {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const tick = setInterval(() => setUpdatedAt(Date.now()), 8000);
+    return () => clearInterval(tick);
+  }, []);
+
+  const CampaignFeed: React.FC<{ items: ICampaign[] }> = ({ items }) => {
+    const [nicheFilter, setNicheFilter] = useState('');
+    const visible = !nicheFilter
+      ? items
+      : items.filter((c) => c.niche.some((n) => n.toLowerCase() === nicheFilter));
+
+    return (
+      <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div>
+            <h2 className="font-bold text-gray-900">Latest Campaigns</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Updated {new Date(updatedAt).toLocaleTimeString()} · {onlineUsers.length} online
+              {isConnected ? '' : ' (connecting)'}
+            </p>
+          </div>
+          <Link to="/campaigns" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+            View all <ArrowRight size={14} />
+          </Link>
+        </div>
+        <div className="px-6 py-3 border-b flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setNicheFilter('')}
+            className={`px-3 py-1 rounded-full text-xs border ${!nicheFilter ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600'}`}
+          >
+            All
+          </button>
+          {NICHES.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setNicheFilter(n.toLowerCase())}
+              className={`px-3 py-1 rounded-full text-xs border ${nicheFilter === n.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600'}`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        {visible.length === 0 ? (
+          <EmptyState title="No campaigns in this niche" description="Try another filter." />
+        ) : (
+          <div className="divide-y">
+            {visible.map((c) => (
+              <div key={c._id} className="px-6 py-4 hover:bg-gray-50 transition">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate">{c.title}</h3>
+                    <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {c.niche.slice(0, 3).map((n) => (
+                        <span key={n} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{n}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-gray-900">{c.budget.toLocaleString()} ETB</p>
+                    <p className="text-xs text-gray-500">{c.duration} days</p>
+                    <Link to={`/campaigns/${c._id}`}
+                      className="mt-2 inline-block text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition">
+                      View
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading) return <PageLoading />;
 
@@ -79,44 +161,7 @@ const CreatorDashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Latest campaigns */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between px-6 py-4 border-b">
-            <h2 className="font-bold text-gray-900">Latest Campaigns</h2>
-            <Link to="/campaigns" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-              View all <ArrowRight size={14} />
-            </Link>
-          </div>
-          {campaigns.length === 0 ? (
-            <EmptyState title="No campaigns yet" description="Check back soon!" />
-          ) : (
-            <div className="divide-y">
-              {campaigns.map((c) => (
-                <div key={c._id} className="px-6 py-4 hover:bg-gray-50 transition">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{c.title}</h3>
-                      <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {c.niche.slice(0, 3).map((n) => (
-                          <span key={n} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{n}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-gray-900">{c.budget.toLocaleString()} ETB</p>
-                      <p className="text-xs text-gray-500">{c.duration} days</p>
-                      <Link to={`/campaigns/${c._id}`}
-                        className="mt-2 inline-block text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition">
-                        View
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <CampaignFeed items={campaigns} />
 
         {/* My applications */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">

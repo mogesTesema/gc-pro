@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { campaignAPI } from '../../api/client';
+import { useCampaignShortlist } from '../../hooks/useApi';
 import { ICampaign, IPagination } from '../../types';
 import { Badge, EmptyState, Spinner } from '../../components/common/index';
 import { Search, SlidersHorizontal, DollarSign, Calendar, Users, Bookmark } from 'lucide-react';
@@ -21,7 +22,7 @@ const CampaignsList: React.FC = () => {
   const [minBudget, setMinBudget] = useState('');
   const [maxBudget, setMaxBudget] = useState('');
   const [selectedPlatform, setSelectedPlatform] = useState('');
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const { ranks, labels, pendingId, isShortlisted, applyRank, promote } = useCampaignShortlist();
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true);
@@ -53,6 +54,29 @@ const CampaignsList: React.FC = () => {
           {pagination?.total ?? 0} campaigns available
         </p>
       </div>
+
+      {ranks.length > 0 && (
+        <div className="mb-6 bg-white border border-blue-100 rounded-xl p-4">
+          <p className="text-sm font-semibold text-gray-800 mb-2">Shortlist</p>
+          <p className="text-xs text-gray-500 mb-3">Tap a chip to promote it. Bookmarking an already-saved campaign also re-ranks it.</p>
+          <div className="flex flex-wrap gap-2">
+            {ranks.map((id, index) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => promote(id, labels[id] || 'Campaign')}
+                disabled={pendingId === id}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+              >
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
+                  {index + 1}
+                </span>
+                <span className="max-w-[180px] truncate">{labels[id] || id}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search & filter bar */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -148,24 +172,17 @@ const CampaignsList: React.FC = () => {
                   <h3 className="font-semibold text-gray-900 line-clamp-2">{c.title}</h3>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.preventDefault();
-                        try {
-                          const res = await campaignAPI.toggleBookmark(c._id);
-                          setBookmarkedIds(prev => {
-                            const next = new Set(prev);
-                            res.data.bookmarked ? next.add(c._id) : next.delete(c._id);
-                            return next;
-                          });
-                          toast.success(res.data.message);
-                        } catch { toast.error('Login required to bookmark'); }
+                        applyRank(c._id, c.title);
                       }}
+                      disabled={pendingId === c._id}
                       className={`p-1.5 rounded-lg transition hover:bg-blue-50 ${
-                        bookmarkedIds.has(c._id) ? 'text-blue-600' : 'text-gray-300 hover:text-blue-400'
+                        isShortlisted(c._id) ? 'text-blue-600' : 'text-gray-300 hover:text-blue-400'
                       }`}
                       title="Bookmark"
                     >
-                      <Bookmark size={16} fill={bookmarkedIds.has(c._id) ? 'currentColor' : 'none'} />
+                      <Bookmark size={16} fill={isShortlisted(c._id) ? 'currentColor' : 'none'} />
                     </button>
                     <Badge status={c.status} />
                   </div>
