@@ -1,39 +1,32 @@
-# GC-Pro Enterprise Suite
+# AACP
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
-![License](https://img.shields.io/badge/license-Proprietary-red)
-![Version](https://img.shields.io/badge/version-2.4.1-blue)
+React frontend for the AI Advertisement Collaboration Platform — a marketplace where creators and brands run campaigns, applications, chat, and payouts.
 
-Secure, internal collaboration and compliance reporting platform. Features high-performance analytics dashboards, audit trails, and encrypted messaging.
+## Requirements
 
-## Table of Contents
-1. [Architecture Overview](#architecture-overview)
-2. [Prerequisites](#prerequisites)
-3. [Environment Setup](#environment-setup)
-4. [Deployment](#deployment)
-5. [Contribution Guidelines](#contribution-guidelines)
-6. [Security](#security)
+- Node.js 20 (`nvm use` if you have `.nvmrc`)
+- npm
 
-## Architecture Overview
-This application is built on a robust enterprise stack: **React 18, Express, Node.js, WebSockets**.
-It follows strict Domain-Driven Design (DDD) principles and features event-driven micro-architecture for high scalability.
+## Setup
 
-## Prerequisites
-Please ensure your local development environment complies with IT security policies.
-- Internal VPN access configured.
-- Validated SSL certificates installed.
-
-## Environment Setup
 ```bash
-docker-compose up -d
+npm ci
+cp .env.example .env
 ```
 
-## Deployment
-All deployments must pass through the automated CI/CD pipeline. Direct pushes to `main` are strictly prohibited by branch protection rules.
+`.env` is optional for local UI work. API calls go to `REACT_APP_API_URL` (defaults to `http://localhost:5000/api`).
 
-## Contribution Guidelines
-Please refer to `CONTRIBUTING.md` for strict branch naming and commit message conventions.
+## Scripts
 
-## Security
-Report vulnerabilities according to `SECURITY.md`. Do NOT create public issues for security flaws.
+```bash
+npm start          # dev server at http://localhost:3000
+npm test           # Jest + Testing Library (non-interactive)
+npm run typecheck  # tsc --noEmit
+npm run build      # production bundle
+```
+
+Tests mock the HTTP client. They do not need a backend, database, or credentials.
+
+## Stack
+
+Create React App, React 19, TypeScript, Tailwind CSS, React Router.
